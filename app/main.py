@@ -171,5 +171,5 @@ def health_check():
     return {
         "status": "healthy",
         "service": "JKUSA CMS Backend",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat()  # <-- datetime is used but not imported
     }
