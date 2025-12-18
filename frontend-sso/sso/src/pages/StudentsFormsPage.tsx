@@ -171,7 +171,7 @@ const StudentFormsPage = () => {
 
         if (response.ok) {
           const data = await response.json();
-          const formsArray = Array.isArray(data) ? data : THEM;
+          const formsArray = Array.isArray(data) ? data : [];
           const sorted = formsArray.sort((a: Form, b: Form) => 
             new Date(b.open_date).getTime() - new Date(a.open_date).getTime()
           );
@@ -218,7 +218,7 @@ const StudentFormsPage = () => {
 
         const initialData = form.fields.reduce((acc: any, field: Field) => ({
           ...acc,
-          [field.id]: field.default_value || "",
+          [field.id]: field.default_value || (field.field_type === "multi_select" || field.field_type === "checkbox" ? [] : ""),
         }), {});
 
         if (submissionResponse && submissionResponse.ok) {
@@ -260,7 +260,7 @@ const StudentFormsPage = () => {
             if (!files || files.length === 0) {
               newErrors[field.id] = `${field.label} is required`;
             }
-          } else if (value === "" || value === null || value === undefined) {
+          } else if (value === "" || value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
             newErrors[field.id] = `${field.label} is required`;
           }
         }
@@ -295,6 +295,18 @@ const StudentFormsPage = () => {
 
           if (field.max_value !== undefined && Number(value) > field.max_value) {
             newErrors[field.id] = `Maximum value is ${field.max_value}`;
+          }
+
+          // FIXED: Validate multi_select / checkbox options
+          if ((field.field_type === "multi_select" || field.field_type === "checkbox") && Array.isArray(value)) {
+            const invalidOptions = value.filter(v => !field.options?.includes(v));
+            if (invalidOptions.length > 0) {
+              newErrors[field.id] = `Invalid option(s): ${invalidOptions.join(", ")}. Allowed: ${field.options?.join(", ")}`;
+            }
+          }
+
+          if ((field.field_type === "select" || field.field_type === "radio") && field.options && !field.options.includes(value)) {
+            newErrors[field.id] = `Invalid selection. Must be one of: ${field.options.join(", ")}`;
           }
         }
       });
@@ -332,8 +344,17 @@ const StudentFormsPage = () => {
         }
       } else if (value !== undefined && value !== null && value !== "") {
         if (Array.isArray(value)) {
-          formDataToSend.append(String(field.id), JSON.stringify(value));
-          console.log(`Field ${field.id} (${field.label}): ARRAY - ${JSON.stringify(value)}`);
+          // Only send valid options
+          const validValues = value.filter(v => field.options?.includes(v));
+          if (validValues.length > 0) {
+            formDataToSend.append(String(field.id), JSON.stringify(validValues));
+            console.log(`Field ${field.id} (${field.label}): ARRAY - ${JSON.stringify(validValues)}`);
+          }
+        } else if (field.field_type === "select" || field.field_type === "radio") {
+          if (field.options?.includes(value)) {
+            formDataToSend.append(String(field.id), String(value));
+            console.log(`Field ${field.id} (${field.label}): ${String(value)}`);
+          }
         } else {
           formDataToSend.append(String(field.id), String(value));
           console.log(`Field ${field.id} (${field.label}): ${String(value)}`);
@@ -636,11 +657,10 @@ const StudentFormsPage = () => {
                     checked={Array.isArray(value) && value.includes(option)}
                     onChange={(e) => {
                       const currentValues = Array.isArray(value) ? value : [];
-                      if (e.target.checked) {
-                        setFormData({ ...formData, [field.id]: [...currentValues, option] });
-                      } else {
-                        setFormData({ ...formData, [field.id]: currentValues.filter(v => v !== option) });
-                      }
+                      const newValues = e.target.checked
+                        ? [...currentValues, option]
+                        : currentValues.filter(v => v !== option);
+                      setFormData({ ...formData, [field.id]: newValues });
                     }}
                     disabled={isDisabled}
                     className="w-4 h-4 text-blue-600 border-gray-300 rounded"
@@ -658,45 +678,45 @@ const StudentFormsPage = () => {
           const allowedTypes = config.allowed_types || ['pdf', 'doc', 'image'];
           
           return (
-          <div className="space-y-3">
-            <div>
-              <input
-                id={`field-${field.id}`}
-                type="file"
-                onChange={(e) => handleFileChange(field.id, e.target.files, field)}
-                disabled={isDisabled}
-                multiple={field.field_type === 'multi_file_upload'}
-                className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-white focus:outline-none"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Max size: {formatFileSize(maxSize)}. Allowed: {allowedTypes.join(', ')}
-              </p>
-            </div>
-            
-            {files.length > 0 && (
-              <div className="space-y-2">
-                {files.map((file, index) => (
-                  <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200">
-                    <div className="flex items-center space-x-2 flex-1 min-w-0">
-                      <span className="text-blue-600">Attachment</span>
-                      <span className="text-sm text-gray-700 truncate">{file.name}</span>
-                      <span className="text-xs text-gray-500">({formatFileSize(file.size)})</span>
-                    </div>
-                    {!isDisabled && (
-                      <button
-                        type="button"
-                        onClick={() => removeFile(field.id, index)}
-                        className="ml-2 text-red-600 hover:text-red-800"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                ))}
+            <div className="space-y-3">
+              <div>
+                <input
+                  id={`field-${field.id}`}
+                  type="file"
+                  onChange={(e) => handleFileChange(field.id, e.target.files, field)}
+                  disabled={isDisabled}
+                  multiple={field.field_type === 'multi_file_upload'}
+                  className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-white focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Max size: {formatFileSize(maxSize)}. Allowed: {allowedTypes.join(', ')}
+                </p>
               </div>
-            )}
-          </div>
-        );
+              
+              {files.length > 0 && (
+                <div className="space-y-2">
+                  {files.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200">
+                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                        <span className="text-blue-600">Attachment</span>
+                        <span className="text-sm text-gray-700 truncate">{file.name}</span>
+                        <span className="text-xs text-gray-500">({formatFileSize(file.size)})</span>
+                      </div>
+                      {!isDisabled && (
+                        <button
+                          type="button"
+                          onClick={() => removeFile(field.id, index)}
+                          className="ml-2 text-red-600 hover:text-red-800"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
 
         case "url":
           return (
