@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # JWT settings
-SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 admin_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="admin/auth/login")
 
